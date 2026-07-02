@@ -61,9 +61,11 @@
   .span12{grid-column:span 12}.span8{grid-column:span 8}.span6{grid-column:span 6}.span4{grid-column:span 4}
   .cbody{position:relative;height:300px}
   .cbody.tall{height:340px}
-  .insight{margin-top:12px;font-size:12.5px;color:#33507a;background:#f2f6ff;border:1px solid #dfe8fb;
-    border-radius:9px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
-  .insight b{color:var(--primary)}
+  .reco{margin-top:12px;font-size:12.5px;color:#5a4a2a;background:#fff8ec;border:1px solid #f3e2bf;
+    border-left:4px solid var(--amber);border-radius:9px;padding:10px 13px;display:flex;flex-direction:column;gap:3px}
+  .reco .rl{font-weight:800;color:#b45309;font-size:11px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+  .reco .rt{color:#4a5170;line-height:1.5}
+  .reco .rt b{color:#b45309;font-weight:700}
 
   /* ---- Pantalla de acceso mensual (token) — tema claro ---- */
   .token-screen{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
@@ -201,39 +203,42 @@
       <h3>📈 Volumen diario de guías emitidas</h3>
       <div class="sub">Cuántas guías despacha el almacén cada día. Sirve para anticipar picos de carga.</div>
       <div class="cbody"><canvas id="chDia"></canvas></div>
-      <div class="insight" id="ins-dia">🔎 <span></span></div>
+      <div class="reco" id="ins-dia"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
 
     <div class="card span4">
       <h3>🚚 Motivo de traslado</h3>
       <div class="sub">Distribución del tipo de despacho.</div>
       <div class="cbody"><canvas id="chMotivo"></canvas></div>
+      <div class="reco" id="ins-mot"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
 
     <div class="card span6">
       <h3>⏱️ Carga de trabajo por hora</h3>
       <div class="sub">Hora en que se inicia cada despacho. Clave para asignar personal por turno.</div>
       <div class="cbody"><canvas id="chHora"></canvas></div>
-      <div class="insight" id="ins-hora">🔎 <span></span></div>
+      <div class="reco" id="ins-hora"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
 
     <div class="card span6">
       <h3>🎯 Tiempo de preparación (picking)</h3>
       <div class="sub">Minutos que toma alistar cada guía. A la izquierda = más ágil.</div>
       <div class="cbody"><canvas id="chPicking"></canvas></div>
-      <div class="insight" id="ins-pick">🔎 <span></span></div>
+      <div class="reco" id="ins-pick"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
 
     <div class="card span8">
       <h3>👥 Top 10 clientes por número de guías</h3>
       <div class="sub">Clientes que más movimiento generan en el almacén.</div>
       <div class="cbody tall"><canvas id="chCliente"></canvas></div>
+      <div class="reco" id="ins-cli"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
 
     <div class="card span4">
       <h3>✅ Estado de las guías</h3>
       <div class="sub">Situación operativa de cada guía emitida.</div>
       <div class="cbody tall"><canvas id="chEstado"></canvas></div>
+      <div class="reco" id="ins-est"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
   </div>
 
@@ -378,8 +383,8 @@ function render(){
   ]},options:baseOpts({scales:{y:{beginAtZero:true,...gridCfg},x:gridCfg},
     plugins:{legend:{display:true,position:'top',labels:{boxWidth:12,usePointStyle:true}},
     tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8}}})});
-  const maxDi=diasV.indexOf(Math.max(...diasV));
-  document.querySelector('#ins-dia span').innerHTML=`Promedio de <b>${avg.toFixed(0)} guías/día</b>. El día más cargado fue <b>${diasLbl[maxDi]||'—'}</b> con <b>${Math.max(...diasV)||0}</b> guías: refuerce personal esos días.`;
+  const maxDi=diasV.indexOf(Math.max(...diasV)), minDi=diasV.indexOf(Math.min(...diasV));
+  document.querySelector('#ins-dia .rt').innerHTML=`Promedio de <b>${avg.toFixed(0)} guías/día</b>. Pico: <b>${diasLbl[maxDi]||'—'}</b> (${Math.max(...diasV)||0}) → refuerza personal y adelanta el picking esos días. Valle: <b>${diasLbl[minDi]||'—'}</b> (${Math.min(...diasV)||0}) → aprovecha para inventario, orden de ubicaciones y despacho de pendientes.`;
 
   /* 2. Motivo (dona) */
   const byMot={};
@@ -391,6 +396,18 @@ function render(){
     options:baseOpts({cutout:'58%',plugins:{legend:{display:true,position:'bottom',
       labels:{boxWidth:11,usePointStyle:true,padding:9,font:{size:11}}},
       tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8,callbacks:{label:c=>` ${c.label}: ${c.raw} (${(c.raw/totalG*100).toFixed(0)}%)`}}}})});
+  (function(){
+    const ms=Object.entries(byMot).sort((a,b)=>b[1]-a[1]);
+    const totM=ms.reduce((s,x)=>s+x[1],0)||1;
+    const top=ms[0]||['—',0]; const p=(top[1]/totM*100).toFixed(0);
+    const t=(top[0]||'').toLowerCase();
+    let adv='Estandariza el flujo dominante con un checklist propio para reducir errores y tiempos.';
+    if(t.includes('provincia')) adv='Define cortes horarios con las agencias de transporte y consolida por destino en un solo despacho para bajar el costo de flete.';
+    else if(t.includes('recoge')) adv='Habilita un carril rápido de recojo y avisa al cliente por WhatsApp apenas el pedido esté listo, para reducir esperas en mostrador.';
+    else if(t.includes('traslado')) adv='Programa los traslados internos en bloques fijos para no competir con los despachos de venta en hora punta.';
+    else if(t.includes('local')) adv='Agrupa las entregas locales por zona y arma rutas para optimizar el reparto.';
+    document.querySelector('#ins-mot .rt').innerHTML=`<b>${top[0]}</b> concentra el <b>${p}%</b> de los despachos. ${adv}`;
+  })();
 
   /* 3. Carga por hora */
   const hrs={};for(let h=7;h<=18;h++)hrs[h]=0;
@@ -403,7 +420,7 @@ function render(){
     options:baseOpts({scales:{y:{beginAtZero:true,...gridCfg},x:gridCfg},
       plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8,callbacks:{label:c=>` ${c.raw} despachos`}}}})});
   const hrPeak=hK[hV.indexOf(maxH)];
-  document.querySelector('#ins-hora span').innerHTML=`La hora punta es <b>${hrPeak}:00</b> (${maxH} despachos). Concentre la dotación entre las <b>10:00 y 16:00</b>.`;
+  document.querySelector('#ins-hora .rt').innerHTML=`Hora punta: <b>${hrPeak}:00</b> (${maxH} despachos). El grueso se concentra <b>12:00–16:00</b>: suma personal en la tarde y adelanta el corte de pedidos para no arriesgar el cierre y la emisión SUNAT del día.`;
 
   /* 4. Picking histograma */
   const bins=[[0,5],[5,10],[10,15],[15,20],[20,30],[30,45],[45,60],[60,180]];
@@ -417,7 +434,8 @@ function render(){
       x:{...gridCfg,title:{display:true,text:'minutos'}}},
       plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8,callbacks:{label:c=>` ${c.raw} guías`}}}})});
   const rapido=binV[0]+binV[1]+binV[2];const totPk=binV.reduce((a,b)=>a+b,0)||1;
-  document.querySelector('#ins-pick span').innerHTML=`<b>${(rapido/totPk*100).toFixed(0)}%</b> de las guías se preparan en <b>15 min o menos</b> (verde). Revise las de <b>+60 min</b> (rojo): suelen ser pedidos grandes o quiebres de stock.`;
+  const bajo20=binV[0]+binV[1]+binV[2]+binV[3];
+  document.querySelector('#ins-pick .rt').innerHTML=`<b>${(rapido/totPk*100).toFixed(0)}%</b> se prepara en <b>≤15 min</b>. Las de <b>+60 min</b> (${binV[7]} guías) son el foco: revisa ubicaciones y quiebres de stock. Meta sugerida: <b>80% bajo 20 min</b> (hoy <b>${(bajo20/totPk*100).toFixed(0)}%</b>).`;
 
   /* 5. Top clientes */
   const byCli={};
@@ -429,6 +447,16 @@ function render(){
     options:baseOpts({indexAxis:'y',scales:{x:{beginAtZero:true,...gridCfg},y:gridCfg},
       plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8,
         callbacks:{title:c=>cliE[c[0].dataIndex][0],label:c=>` ${c.raw} guías`}}}})});
+  (function(){
+    const all=Object.entries(byCli).sort((a,b)=>b[1]-a[1]);
+    const totC=all.reduce((s,x)=>s+x[1],0)||1;
+    let cum=0,np=0; for(const [,v] of all){cum+=v;np++; if(cum>=totC*0.8)break;}
+    const pctCli=all.length?(np/all.length*100).toFixed(0):0;
+    const c1=all[0]||['—',0];
+    const pt=all.find(x=>x[0].toUpperCase().includes('PERU TRACTOR'));
+    let extra=''; if(pt) extra=` <b>Perú Tractor</b> (traslados internos) es el <b>${(pt[1]/totC*100).toFixed(0)}%</b> del movimiento: revisa la frecuencia de reposición para agrupar viajes.`;
+    document.querySelector('#ins-cli .rt').innerHTML=`Solo <b>${np} clientes</b> (${pctCli}%) generan el <b>80%</b> de las guías (Pareto). Prioriza su SLA y define ventanas de atención preferente. Cliente #1: <b>${c1[0]}</b> (${c1[1]} guías).${extra}`;
+  })();
 
   /* 6. Estado */
   const byEst={};
@@ -440,6 +468,18 @@ function render(){
     options:baseOpts({cutout:'58%',plugins:{legend:{display:true,position:'bottom',
       labels:{boxWidth:11,usePointStyle:true,padding:8,font:{size:11}}},
       tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8,callbacks:{label:c=>` ${c.label}: ${c.raw} (${(c.raw/totalG*100).toFixed(0)}%)`}}}})});
+  (function(){
+    const totE=estE.reduce((s,x)=>s+x[1],0)||1;
+    const sum=f=>estE.filter(x=>f(x[0])).reduce((s,x)=>s+x[1],0);
+    const ent=sum(e=>e.includes('ENTREG')), anu=sum(e=>e.includes('ANUL')), pen=sum(e=>e.includes('RECOJO')), sin=sum(e=>e.includes('SIN'));
+    let msg=`<b>${(ent/totE*100).toFixed(0)}%</b> entregado. `;
+    const partes=[];
+    if(pen>0) partes.push(`da seguimiento a <b>${pen}</b> pendiente(s) de recojo para liberar stock inmovilizado`);
+    if(anu>0) partes.push(`analiza la causa de las <b>${anu}</b> anulación(es) (facturación, precio o duplicados)`);
+    if(sin>0) partes.push(`completa el registro de <b>${sin}</b> guía(s) sin estado para no perder trazabilidad`);
+    msg += partes.length ? partes.join('; ')+'.' : 'Operación limpia: mantén el control diario para sostener el nivel.';
+    document.querySelector('#ins-est .rt').innerHTML=msg;
+  })();
 }
 
 /* ---------- Init ---------- */
