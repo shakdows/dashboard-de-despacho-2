@@ -39,18 +39,20 @@
 
   /* Filtros */
   .filters{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;
-    box-shadow:var(--shadow);display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-bottom:20px;position:sticky;top:10px;z-index:20}
-  .fgroup{display:flex;flex-direction:column;gap:6px}
+    box-shadow:var(--shadow);display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-start;margin-bottom:20px;position:sticky;top:10px;z-index:20}
+  .fgroup{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .fgroup-wide{flex:1 1 260px}
   .fgroup label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;max-height:78px;overflow-y:auto;padding-right:2px}
+  .chips::-webkit-scrollbar{height:6px;width:6px}
+  .chips::-webkit-scrollbar-thumb{background:#d5daea;border-radius:6px}
   .chip{border:1px solid var(--line);background:#fff;color:var(--ink);padding:6px 13px;border-radius:999px;
-    font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s}
+    font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
   .chip:hover{border-color:var(--primary)}
   .chip.active{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 4px 12px rgba(79,70,229,.28)}
-  select{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:13px;color:var(--ink);
-    font-family:inherit;cursor:pointer;min-width:150px}
-  .reset{margin-left:auto;border:none;background:var(--primary-soft);color:var(--primary);font-weight:700;
-    padding:9px 16px;border-radius:9px;font-size:12.5px;cursor:pointer}
+  .chip.active::before{content:"✓ ";font-weight:800}
+  .reset{align-self:center;margin-left:auto;border:none;background:var(--primary-soft);color:var(--primary);font-weight:700;
+    padding:9px 16px;border-radius:9px;font-size:12.5px;cursor:pointer;white-space:nowrap}
   .reset:hover{background:#e0e3fd}
 
   /* KPIs */
@@ -61,6 +63,10 @@
   .kpi .kval{font-size:27px;font-weight:800;letter-spacing:-.02em;margin-top:6px}
   .kpi .ksub{font-size:11.5px;color:var(--muted);margin-top:3px}
   .kpi .kicon{position:absolute;right:12px;top:12px;font-size:17px;opacity:.9}
+  .kpi .kday{margin-top:8px;padding-top:7px;border-top:1px dashed var(--line);font-size:11.5px;color:var(--muted);display:none}
+  .kpi .kday b{color:var(--accent,var(--primary));font-weight:800}
+  .kpis.daymode .kpi .kday{display:block}
+  .kpis.daymode .kpi .kval::after{content:" acum.";font-size:12px;font-weight:600;color:var(--muted);letter-spacing:0}
 
   /* Grid charts */
   .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
@@ -252,17 +258,17 @@
     </div>
     <div class="fgroup">
       <label>Mes</label>
-      <select id="sel-mes"><option value="ALL">Todos los meses</option></select>
+      <div class="chips" id="chips-mes"></div>
     </div>
-    <div class="fgroup">
+    <div class="fgroup fgroup-wide">
       <label>Día</label>
-      <select id="sel-dia"><option value="ALL">Todos los días</option></select>
+      <div class="chips" id="chips-dia"></div>
     </div>
-    <div class="fgroup">
+    <div class="fgroup fgroup-wide">
       <label>Motivo de traslado</label>
-      <select id="sel-motivo"><option value="ALL">Todos los motivos</option></select>
+      <div class="chips" id="chips-motivo"></div>
     </div>
-    <button class="reset" id="btn-reset">↺ Restablecer</button>
+    <button class="reset" id="btn-reset">↺ Limpiar todo</button>
   </div>
 
   <div class="kpis" id="kpis"></div>
@@ -280,6 +286,13 @@
       <div class="sub">Distribución del tipo de despacho.</div>
       <div class="cbody"><canvas id="chMotivo"></canvas></div>
       <div class="reco" id="ins-mot"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
+    </div>
+
+    <div class="card span12">
+      <h3>📊 Acumulado día por día</h3>
+      <div class="sub">Cómo se van sumando las guías y el valor despachado a lo largo del periodo. Muestra el ritmo con que crece el total.</div>
+      <div class="cbody"><canvas id="chAcum"></canvas></div>
+      <div class="reco" id="ins-acum"><span class="rl">💡 Recomendación</span><span class="rt"></span></div>
     </div>
 
     <div class="card span6">
@@ -465,7 +478,11 @@ const fmtInt = n => n.toLocaleString('es-PE');
 const fmtUSD = n => '$'+Math.round(n).toLocaleString('es-PE');
 
 /* ---------- Estado de filtros ---------- */
-let filt = {doc:'ALL', mes:'ALL', dia:'ALL', motivo:'ALL'};
+/* Selección múltiple: cada filtro es un Set. Vacío = "todos". */
+let filt = {doc:new Set(), mes:new Set(), dia:new Set(), motivo:new Set()};
+
+const MESN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const mesLbl = m => MESN[+m.slice(5,7)-1]+' '+m.slice(0,4);
 
 /* Clasificación de documento a categorías legibles */
 function docCat(d){
@@ -477,59 +494,53 @@ function docCat(d){
   return 'Otros';
 }
 
-/* ---------- Poblar / repoblar filtros (se llama en cada carga) ---------- */
-function rebuildFilters(){
-  const cats = ['ALL','Guía por venta','Traslado','Otros'];
-  const labels = {'ALL':'Todos','Guía por venta':'Guía por venta','Traslado':'Traslado','Otros':'Otros'};
-  const cont = document.getElementById('chips-doc');
+/* Construye un grupo de chips de selección múltiple.
+   items: [{v, label}] · sel: Set del estado · onchange: callback */
+function buildChips(contId, items, sel, onchange){
+  const cont=document.getElementById(contId);
   cont.innerHTML='';
-  cats.forEach(c=>{
+  items.forEach(it=>{
     const b=document.createElement('button');
-    b.className='chip'+(c===filt.doc?' active':'');
-    b.textContent=labels[c]; b.dataset.v=c;
-    b.onclick=()=>{filt.doc=c;[...cont.children].forEach(x=>x.classList.toggle('active',x.dataset.v===c));render();};
+    b.className='chip'+(sel.has(it.v)?' active':'');
+    b.textContent=it.label; b.dataset.v=it.v;
+    b.onclick=()=>{
+      if(sel.has(it.v)) sel.delete(it.v); else sel.add(it.v);
+      b.classList.toggle('active', sel.has(it.v));
+      onchange();
+    };
     cont.appendChild(b);
   });
+}
 
-  const MESN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const mesLbl = m => MESN[+m.slice(5,7)-1]+' '+m.slice(0,4);
+/* ---------- Poblar / repoblar filtros (se llama en cada carga) ---------- */
+function rebuildFilters(){
+  /* --- Tipo de documento --- */
+  const cats=['Guía por venta','Traslado','Otros'];
+  buildChips('chips-doc', cats.map(c=>({v:c,label:c})), filt.doc, render);
 
   /* --- Mes --- */
   const meses=[...new Set(DATA.map(r=>r.fecha).filter(Boolean).map(f=>f.slice(0,7)))].sort();
-  const selMes=document.getElementById('sel-mes');
-  selMes.innerHTML='<option value="ALL">Todos los meses</option>';
-  meses.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=mesLbl(m);selMes.appendChild(o);});
-  if(meses.includes(filt.mes)) selMes.value=filt.mes; else {filt.mes='ALL'; selMes.value='ALL';}
-
-  /* --- Día (solo los del mes elegido) --- */
-  const selD=document.getElementById('sel-dia');
-  function poblarDias(){
+  const buildDias=()=>{
+    // Días válidos según meses elegidos (si no hay mes elegido, todos)
     const dd=[...new Set(DATA.map(r=>r.fecha).filter(Boolean)
-      .filter(f=>filt.mes==='ALL'||f.slice(0,7)===filt.mes))].sort();
-    selD.innerHTML='<option value="ALL">Todos los días</option>';
-    dd.forEach(d=>{const o=document.createElement('option');o.value=d;
-      o.textContent=new Date(d+'T00:00:00').toLocaleDateString('es-PE',{day:'2-digit',month:'short'});selD.appendChild(o);});
-    if(dd.includes(filt.dia)) selD.value=filt.dia; else {filt.dia='ALL'; selD.value='ALL';}
-    return dd;
-  }
-  const dias=poblarDias();
+      .filter(f=>filt.mes.size===0 || filt.mes.has(f.slice(0,7))))].sort();
+    // Descartar días seleccionados que ya no aplican
+    [...filt.dia].forEach(d=>{ if(!dd.includes(d)) filt.dia.delete(d); });
+    buildChips('chips-dia',
+      dd.map(d=>({v:d,label:new Date(d+'T00:00:00').toLocaleDateString('es-PE',{day:'2-digit',month:'short'})})),
+      filt.dia, render);
+  };
+  buildChips('chips-mes', meses.map(m=>({v:m,label:mesLbl(m)})), filt.mes, ()=>{buildDias();render();});
+  buildDias();
 
-  selMes.onchange=()=>{filt.mes=selMes.value; filt.dia='ALL'; poblarDias(); render();};
-  selD.onchange=()=>{filt.dia=selD.value;render();};
-
+  /* --- Motivo (ordenado por frecuencia) --- */
   const mots=[...new Set(DATA.map(r=>r.motivo).filter(m=>m&&m!=='Sin especificar'))]
     .sort((a,b)=>DATA.filter(r=>r.motivo===b).length-DATA.filter(r=>r.motivo===a).length);
-  const selM=document.getElementById('sel-motivo');
-  selM.innerHTML='<option value="ALL">Todos los motivos</option>';
-  mots.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;selM.appendChild(o);});
-  if(mots.includes(filt.motivo)) selM.value=filt.motivo; else {filt.motivo='ALL'; selM.value='ALL';}
-  selM.onchange=()=>{filt.motivo=selM.value;render();};
+  buildChips('chips-motivo', mots.map(m=>({v:m,label:m})), filt.motivo, render);
 
   document.getElementById('btn-reset').onclick=()=>{
-    filt={doc:'ALL',mes:'ALL',dia:'ALL',motivo:'ALL'};
-    selMes.value='ALL'; poblarDias(); selM.value='ALL';
-    [...cont.children].forEach(x=>x.classList.toggle('active',x.dataset.v==='ALL'));
-    render();
+    filt.doc.clear(); filt.mes.clear(); filt.dia.clear(); filt.motivo.clear();
+    rebuildFilters(); render();
   };
 
   /* Subtítulo del periodo, según los datos vigentes */
@@ -544,10 +555,10 @@ function rebuildFilters(){
 
 function applyFilters(){
   return DATA.filter(r=>{
-    if(filt.doc!=='ALL' && docCat(r.doc)!==filt.doc) return false;
-    if(filt.mes!=='ALL' && (!r.fecha || r.fecha.slice(0,7)!==filt.mes)) return false;
-    if(filt.dia!=='ALL' && r.fecha!==filt.dia) return false;
-    if(filt.motivo!=='ALL' && r.motivo!==filt.motivo) return false;
+    if(filt.doc.size    && !filt.doc.has(docCat(r.doc))) return false;
+    if(filt.mes.size    && (!r.fecha || !filt.mes.has(r.fecha.slice(0,7)))) return false;
+    if(filt.dia.size    && !filt.dia.has(r.fecha)) return false;
+    if(filt.motivo.size && !filt.motivo.has(r.motivo)) return false;
     return true;
   });
 }
@@ -574,20 +585,54 @@ function render(){
   const anul=D.filter(r=>r.anulado).length;
   const anulPct=totalG?(anul/totalG*100):0;
 
+  /* Modo "día": activo cuando hay exactamente un día seleccionado.
+     Muestra el dato de ESE día + el acumulado hasta ese día (dentro del filtro vigente). */
+  let dayMode=null;
+  if(filt.dia.size===1){
+    const dSel=[...filt.dia][0];
+    // Datos del universo filtrado pero SIN el filtro de día, para poder acumular
+    const base=DATA.filter(r=>{
+      if(filt.doc.size    && !filt.doc.has(docCat(r.doc))) return false;
+      if(filt.mes.size    && (!r.fecha || !filt.mes.has(r.fecha.slice(0,7)))) return false;
+      if(filt.motivo.size && !filt.motivo.has(r.motivo)) return false;
+      return true;
+    });
+    const dayRows=base.filter(r=>r.fecha===dSel);
+    const accRows=base.filter(r=>r.fecha && r.fecha<=dSel);
+    const agg=rows=>({
+      g:rows.length,
+      val:rows.reduce((s,r)=>s+(r.total||0),0),
+      it:rows.reduce((s,r)=>s+(r.items||0),0),
+      sun:rows.filter(r=>r.sunat==='Aceptado').length,
+      anu:rows.filter(r=>r.anulado).length,
+      pk:(()=>{const p=rows.map(r=>r.picking).filter(v=>v!=null).sort((a,b)=>a-b);return p.length?p[Math.floor(p.length/2)]:0;})(),
+    });
+    dayMode={dSel, day:agg(dayRows), acc:agg(accRows)};
+  }
+
   const kpis=[
-    {l:'Guías emitidas',v:fmtInt(totalG),s:'documentos en el periodo',ic:'📄',c:C.primary},
-    {l:'Valor despachado',v:fmtUSD(valor),s:'monto total en guías de venta',ic:'💵',c:C.green},
-    {l:'Ítems despachados',v:fmtInt(items),s:'líneas de producto alistadas',ic:'📦',c:C.teal},
-    {l:'Picking mediano',v:medPick.toFixed(0)+' min',s:'tiempo típico de preparación',ic:'⏱️',c:C.violet},
-    {l:'Cumplimiento SUNAT',v:sunatPct.toFixed(1)+'%',s:sunatOK+' de '+totalG+' aceptadas',ic:'✅',c:C.amber},
-    {l:'Tasa de anulación',v:anulPct.toFixed(1)+'%',s:anul+' guías anuladas',ic:'⚠️',c:C.red},
+    {l:'Guías emitidas',v:fmtInt(totalG),s:'documentos en el periodo',ic:'📄',c:C.primary,
+      d:dayMode?fmtInt(dayMode.day.g):null},
+    {l:'Valor despachado',v:fmtUSD(valor),s:'monto total en guías de venta',ic:'💵',c:C.green,
+      d:dayMode?fmtUSD(dayMode.day.val):null},
+    {l:'Ítems despachados',v:fmtInt(items),s:'líneas de producto alistadas',ic:'📦',c:C.teal,
+      d:dayMode?fmtInt(dayMode.day.it):null},
+    {l:'Picking mediano',v:medPick.toFixed(0)+' min',s:'tiempo típico de preparación',ic:'⏱️',c:C.violet,
+      d:dayMode?dayMode.day.pk.toFixed(0)+' min':null},
+    {l:'Cumplimiento SUNAT',v:sunatPct.toFixed(1)+'%',s:sunatOK+' de '+totalG+' aceptadas',ic:'✅',c:C.amber,
+      d:dayMode?(dayMode.day.g?(dayMode.day.sun/dayMode.day.g*100):0).toFixed(1)+'%':null},
+    {l:'Tasa de anulación',v:anulPct.toFixed(1)+'%',s:anul+' guías anuladas',ic:'⚠️',c:C.red,
+      d:dayMode?(dayMode.day.g?(dayMode.day.anu/dayMode.day.g*100):0).toFixed(1)+'%':null},
   ];
-  document.getElementById('kpis').innerHTML=kpis.map(k=>`
+  const kpiWrap=document.getElementById('kpis');
+  kpiWrap.classList.toggle('daymode', !!dayMode);
+  kpiWrap.innerHTML=kpis.map(k=>`
     <div class="kpi" style="--accent:${k.c}">
       <div class="kicon">${k.ic}</div>
       <div class="klabel">${k.l}</div>
       <div class="kval">${k.v}</div>
       <div class="ksub">${k.s}</div>
+      ${k.d!=null?`<div class="kday">📅 Del día: <b>${k.d}</b></div>`:''}
     </div>`).join('');
 
   document.getElementById('pill-count').textContent=fmtInt(totalG);
@@ -609,6 +654,32 @@ function render(){
     tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8}}})});
   const maxDi=diasV.indexOf(Math.max(...diasV)), minDi=diasV.indexOf(Math.min(...diasV));
   document.querySelector('#ins-dia .rt').innerHTML=`Promedio de <b>${avg.toFixed(0)} guías/día</b>. Pico: <b>${diasLbl[maxDi]||'—'}</b> (${Math.max(...diasV)||0}) → refuerza personal y adelanta el picking esos días. Valle: <b>${diasLbl[minDi]||'—'}</b> (${Math.min(...diasV)||0}) → aprovecha para inventario, orden de ubicaciones y despacho de pendientes.`;
+
+  /* 1b. Acumulado día por día (guías + valor US$) */
+  const valDia={};
+  D.forEach(r=>{if(r.fecha)valDia[r.fecha]=(valDia[r.fecha]||0)+(r.total||0);});
+  let accG=0, accV=0;
+  const accGuias=diasK.map(d=>accG+=byDia[d]);
+  const accValor=diasK.map(d=>accV+=(valDia[d]||0));
+  draw('chAcum',{type:'line',data:{labels:diasLbl,datasets:[
+    {label:'Guías acumuladas',data:accGuias,yAxisID:'y',borderColor:C.primary,
+      backgroundColor:'rgba(79,70,229,.10)',fill:true,tension:.3,pointRadius:3,
+      pointBackgroundColor:'#fff',pointBorderColor:C.primary,pointBorderWidth:2,borderWidth:2.5},
+    {label:'Valor acumulado (US$)',data:accValor,yAxisID:'y1',borderColor:C.green,
+      backgroundColor:'rgba(22,163,74,.06)',fill:true,tension:.3,pointRadius:3,
+      pointBackgroundColor:'#fff',pointBorderColor:C.green,pointBorderWidth:2,borderWidth:2.5}
+  ]},options:baseOpts({interaction:{mode:'index',intersect:false},
+    scales:{
+      y:{position:'left',beginAtZero:true,...gridCfg,title:{display:true,text:'Guías'}},
+      y1:{position:'right',beginAtZero:true,grid:{drawOnChartArea:false},border:{display:false},
+          title:{display:true,text:'US$'},ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'}},
+      x:gridCfg},
+    plugins:{legend:{display:true,position:'top',labels:{boxWidth:12,usePointStyle:true}},
+      tooltip:{backgroundColor:'#1e2440',padding:10,cornerRadius:8,callbacks:{
+        label:c=>c.datasetIndex===0?` ${c.raw} guías acum.`:` $${Math.round(c.raw).toLocaleString('es-PE')} acum.`}}}})});
+  const totG2=accGuias[accGuias.length-1]||0, totV2=accValor[accValor.length-1]||0;
+  const nd=diasK.length||1;
+  document.querySelector('#ins-acum .rt').innerHTML=`Al cierre del periodo se acumulan <b>${fmtInt(totG2)} guías</b> y <b>${fmtUSD(totV2)}</b>. Ritmo promedio: <b>${(totG2/nd).toFixed(0)} guías/día</b> y <b>${fmtUSD(totV2/nd)}/día</b>. Usa esta pendiente para proyectar el cierre de mes y detectar si el ritmo se acelera o se estanca.`;
 
   /* 2. Motivo (dona) */
   const byMot={};
